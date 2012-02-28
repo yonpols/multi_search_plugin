@@ -1,0 +1,5 @@
+package:
+  type: plugin
+  name: 'multi_search'
+  author: 'Juan Pablo Marzetti'
+  version: '0.0.1'
