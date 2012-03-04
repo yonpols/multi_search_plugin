@@ -1,5 +1,7 @@
 <?php
     class MultiSearch implements Iterator {
+        public static $custom_operands = array();
+
         protected $query;
 
         protected $count = null;
@@ -12,8 +14,9 @@
         protected $order_direction = 'ASC';
 
         protected $params = array();
+        protected $form_object = null;
 
-        protected $custom_operands = array();
+        protected $filtered = false;
 
         public function __construct($query, $params = null) {
             $this->query = $query;
@@ -28,81 +31,113 @@
                 $this->items_per_page = $this->params['pagination']['items_per_page'];
 
             if (isset($this->params['search'])) {
+                $this->form_object = new search($this->params['search']);
+
                 foreach ($this->params['search'] as $item => $value) {
+                    if ($value === '')
+                        continue;
+
                     list($field, $comp) = explode(':', $item);
 
                     switch ($comp) {
                         case 'equals':
                         case 'eq':
                             $this->query = $this->query->where(sprintf('%s = ?', $field), $value);
+                            $this->filtered = true;
                             break;
 
                         case 'does_not_equal':
                         case 'noteq':
                             $this->query = $this->query->where(sprintf('%s <> ?', $field), $value);
+                            $this->filtered = true;
                             break;
 
                         case 'is_null':
                             $this->query = $this->query->where(sprintf('%s IS NULL', $field));
+                            $this->filtered = true;
                             break;
 
                         case 'is_not_null':
                             $this->query = $this->query->where(sprintf('%s IS NOT NULL', $field));
+                            $this->filtered = true;
                             break;
 
                         case 'contains':
                         case 'like':
                             $this->query = $this->query->where(sprintf('%s LIKE ?', $field), '%'.$value.'%');
+                            $this->filtered = true;
                             break;
 
                         case 'does_not_contain':
                         case 'not_like':
                             $this->query = $this->query->where(sprintf('NOT (%s LIKE ?)', $field), '%'.$value.'%');
+                            $this->filtered = true;
                             break;
 
                         case 'starts_with':
                             $this->query = $this->query->where(sprintf('%s LIKE ?', $field), $value.'%');
+                            $this->filtered = true;
                             break;
 
                         case 'does_not_start_with':
                             $this->query = $this->query->where(sprintf('NOT (%s LIKE ?)', $field), $value.'%');
+                            $this->filtered = true;
                             break;
 
                         case 'ends_with':
                             $this->query = $this->query->where(sprintf('%s LIKE ?', $field), $value.'%');
+                            $this->filtered = true;
                             break;
 
                         case 'does_not_end_with':
                             $this->query = $this->query->where(sprintf('NOT (%s LIKE ?)', $field), $value.'%');
+                            $this->filtered = true;
                             break;
 
                         case 'greater_than':
                         case 'gt':
                             $this->query = $this->query->where(sprintf('%s > ?', $field), $value);
+                            $this->filtered = true;
                             break;
 
                         case 'greater_than_or_equal_to':
                         case 'gteq':
                             $this->query = $this->query->where(sprintf('%s >= ?', $field), $value);
+                            $this->filtered = true;
                             break;
 
                         case 'less_than':
                         case 'lt':
                             $this->query = $this->query->where(sprintf('%s < ?', $field), $value);
+                            $this->filtered = true;
                             break;
 
                         case 'less_than_or_equal_to':
                         case 'lteq':
                             $this->query = $this->query->where(sprintf('%s <= ?', $field), $value);
+                            $this->filtered = true;
+                            break;
+
+                        case 'in':
+                            $sql = sprintf('%s IN (%s)', $field, implode(', ', array_fill(0, count($value), '?')));
+                            $this->query = call_user_func_array(array($this->query, 'where'), array_merge(array($sql), $value));
+                            $this->filtered = true;
+                            break;
+
+                        case 'not_in':
+                            $sql = sprintf('%s NOT IN (%s)', $field, implode(', ', array_fill(0, count($value), '?')));
+                            $this->query = call_user_func_array(array($this->query, 'where'), array_merge(array($sql), $value));
+                            $this->filtered = true;
                             break;
 
                         default:
-                            if (isset ($this->custom_operands[$comp]) && is_callable($this->custom_operands[$comp])) {
-                                $this->query = call_user_func($this->custom_operands[$comp], $this->query, $value);
+                            if (isset (self::$custom_operands[$comp]) && is_callable(self::$custom_operands[$comp])) {
+                                $this->query = call_user_func(self::$custom_operands[$comp], $this->query, $field, $value);
                             }
                     }
                 }
-            }
+            } else
+                $this->form_object = new search;
 
             if (isset($this->params['order'])) {
                 $this->order_field = $this->params['order']['field'];
@@ -130,6 +165,10 @@
 
         public function __get($name) {
             return $this->query->__get($name);
+        }
+
+        public function isFiltered() {
+            return $this->filtered;
         }
 
         public function link($route = null, $extra_params = array()) {
@@ -193,6 +232,10 @@
             return $html;
         }
 
+        public function form() {
+            return $this->form_object;
+        }
+
         public function current() {
             return $this->query->current();
         }
@@ -211,6 +254,23 @@
 
         public function valid() {
             return $this->query->valid();
+        }
+    }
+
+    class search {
+        private $params;
+
+        public function __construct($params = array()) {
+            $this->params = $params;
+        }
+
+        public function __get($name) {
+            if (isset($this->params[$name]))
+                return $this->params[$name];
+        }
+
+        public function __isset($name) {
+            return true;
         }
     }
 ?>

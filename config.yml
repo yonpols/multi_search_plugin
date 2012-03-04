@@ -1,5 +1,5 @@
 package:
   type: plugin
-  name: 'multi_search'
+  name: multi_search
   author: 'Juan Pablo Marzetti'
-  version: '0.0.1'
+  version: 0.0.2
